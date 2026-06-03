@@ -1,6 +1,6 @@
 # microsoft-multi-connection
 
-Pulls compliance evidence from five Microsoft products and pushes it to a Drata custom connection. Runs on a schedule, collects everything, syncs to Drata. That's it.
+Pulls compliance evidence from five Microsoft products and pushes it to a Drata custom connection. Runs on a schedule, collects everything, syncs to Drata.
 
 ---
 
@@ -81,7 +81,7 @@ DRATA_API_KEY
 DRATA_CONNECTION_ID
 ```
 
-**Drata resource IDs** -- set only the ones you've created in the Drata app. Anything unset is skipped silently.
+**Drata resource IDs**  set only the ones you want in Drata. Anything unset is skipped silently.
 ```
 DRATA_RESOURCE_SENTINEL_INCIDENTS
 DRATA_RESOURCE_SENTINEL_ALERTS
@@ -126,15 +126,13 @@ Output is always written to `compliance_payload.json`. Push to Drata happens aft
 
 Session-based full replacement. Every run opens a session per resource, pushes all current records in batches of 100, then completes the session. Completing the session replaces everything Drata had before with what was just pushed. No state tracking needed locally.
 
-If Microsoft returns zero records for a resource, a `NO_RESPONSE` sentinel record is injected so Drata tests can surface the gap as a failure rather than silently passing. Exception: `noncompliant_devices` -- zero records means zero noncompliant devices, which is correct, so nothing is injected.
+If Microsoft returns zero records for a resource, a `NO_RESPONSE` sentinel record is injected so Drata tests can surface the gap as a failure rather than silently passing. Exception: `noncompliant_devices` where zero records means zero noncompliant devices, which is correct, so nothing is injected.
 
 ---
 
-## Notes
+## Note
 
-- DLP is out of scope. Purview DLP data is not accessible via the Graph API. It requires the Office 365 Management Activity API -- separate auth, separate workstream.
-- The module is named `defender_identity.py` for historical reasons but it talks to Entra ID Protection endpoints, not Defender for Identity.
-- `--collect-only` is your friend before configuring anything in Drata. Run it, inspect `compliance_payload.json`, confirm the data looks right.
+- A module is named `defender_identity.py` for historical reasons but it talks to Entra ID Protection endpoints, not Defender for Identity.
 
 ---
 
