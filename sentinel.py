@@ -1,110 +1,123 @@
 """
 sentinel.py
 Microsoft Sentinel connector.
-Covers: security incidents, alerts, analytics rules.
-Sentinel data lives in Log Analytics; some metadata available via Graph Security API.
 
-DCF targets: 27 instances (incidents, alert rules, threat detection posture)
+Three distinct API surfaces:
+    1. Graph Security API     -- incidents and alerts
+    2. Log Analytics API      -- KQL queries (threat detection summary)
+    3. Azure Resource Manager -- analytics rules inventory
+
+Analytics rules are a control-plane resource, not a log entry. They must be
+fetched from ARM. The _SentinelHealth table is NOT used here — it requires
+opt-in workspace configuration and only reflects health events, not the full
+rule inventory.
+
+Required caller parameters (all four needed when sentinel is in --products):
+    workspace_id     -- Log Analytics Workspace ID (GUID) for KQL queries
+    subscription_id  -- Azure subscription ID for ARM rules fetch
+    resource_group   -- resource group containing the Sentinel workspace
+    workspace_name   -- ARM resource name of the Log Analytics workspace
+
+DCF targets: incidents, alert rules, threat detection posture
+
+Drata SA Team
 """
 
 import logging
-import requests
-from auth import MSAuthClient, LOG_ANALYTICS_SCOPE
+from auth import MSAuthClient
 from base import BaseConnector, GRAPH_BASE
 
 logger = logging.getLogger(__name__)
 
-LOG_ANALYTICS_QUERY_URL = (
-    "https://api.loganalytics.io/v1/workspaces/{workspace_id}/query"
-)
+LOG_ANALYTICS_QUERY_URL = "https://api.loganalytics.io/v1/workspaces/{workspace_id}/query"
+_SENTINEL_API_VERSION   = "2023-02-01"
 
-# Sentinel-specific Graph Security API endpoints
 INCIDENTS_URL = f"{GRAPH_BASE}/security/incidents"
-ALERTS_URL = f"{GRAPH_BASE}/security/alerts_v2"
+ALERTS_V2_URL = f"{GRAPH_BASE}/security/alerts_v2"
 
 
 class SentinelConnector(BaseConnector):
     """
-    Dual-API connector: Graph Security API for incidents/alerts,
-    Log Analytics for KQL-based rule and event queries.
+    Sentinel data via Graph Security API, Log Analytics KQL, and ARM.
+    Each API surface uses a different token scope; auth.py provides a
+    dedicated header method for each.
     """
 
-    def __init__(self, auth: MSAuthClient, workspace_id: str):
+    def __init__(
+        self,
+        auth: MSAuthClient,
+        workspace_id: str,
+        subscription_id: str,
+        resource_group: str,
+        workspace_name: str,
+    ) -> None:
         super().__init__(auth)
-        self.workspace_id = workspace_id
-        self.query_url = LOG_ANALYTICS_QUERY_URL.format(workspace_id=workspace_id)
+        self.workspace_id    = workspace_id
+        self.subscription_id = subscription_id
+        self.resource_group  = resource_group
+        self.workspace_name  = workspace_name
+        self._query_url = LOG_ANALYTICS_QUERY_URL.format(workspace_id=workspace_id)
+        self._arm_rules_url = (
+            f"https://management.azure.com/subscriptions/{subscription_id}"
+            f"/resourceGroups/{resource_group}"
+            f"/providers/Microsoft.OperationalInsights/workspaces/{workspace_name}"
+            f"/providers/Microsoft.SecurityInsights/alertRules"
+            f"?api-version={_SENTINEL_API_VERSION}"
+        )
 
     # -------------------------------------------------------------------------
-    # Graph Security API methods
+    # Graph Security API — incidents and alerts
     # -------------------------------------------------------------------------
 
-    def get_incidents(self, top: int = 100) -> list[dict]:
+    def get_incidents(self, top: int = 100) -> list:
         """
-        Returns open and recently closed security incidents.
+        Returns open and in-progress security incidents.
+        Filtered client-side — $filter on status is not reliably supported
+        on this endpoint and may silently return wrong results.
         Maps to DCFs covering incident response process evidence.
         """
-        params = {
-            "$top": top,
-            "$orderby": "lastUpdateDateTime desc",
-            "$filter": "status ne 'resolved'",
-        }
-        return list(self._paginate(INCIDENTS_URL, params=params))
+        params = {"$top": top}
+        raw = list(self._paginate(INCIDENTS_URL, params=params))
+        return [i for i in raw if i.get("status") != "resolved"]
 
-    def get_alerts(self, top: int = 100) -> list[dict]:
+    def get_alerts(self, top: int = 100) -> list:
         """
         Returns active security alerts.
+        Filtered client-side — alerts_v2 OData filter support is minimal and
+        not fully documented; $filter may be silently ignored or return 400.
         Maps to DCFs covering threat detection monitoring.
         """
-        params = {
-            "$top": top,
-            "$orderby": "createdDateTime desc",
-            "$filter": "status ne 'resolved'",
-        }
-        return list(self._paginate(ALERTS_URL, params=params))
+        params = {"$top": top}
+        raw = list(self._paginate(ALERTS_V2_URL, params=params))
+        return [a for a in raw if a.get("status") != "resolved"]
 
     # -------------------------------------------------------------------------
-    # Log Analytics KQL methods
+    # Azure Resource Manager — analytics rules (authoritative inventory)
     # -------------------------------------------------------------------------
 
-    def _kql_query(self, query: str, timespan: str = "P7D") -> list[dict]:
+    def get_analytics_rules(self) -> list:
         """
-        Executes a KQL query against the Log Analytics workspace.
-        timespan uses ISO 8601 duration format (P7D = last 7 days).
-        """
-        headers = self.auth.log_analytics_headers()
-        payload = {"query": query, "timespan": timespan}
-        resp = self.session.post(
-            self.query_url, headers=headers, json=payload, timeout=60
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        Returns all Sentinel analytics rules from the ARM API.
 
-        # Log Analytics returns columnar data; convert to list of dicts
-        tables = data.get("tables", [])
-        if not tables:
-            return []
+        ARM is the authoritative source for rule inventory. The Log Analytics
+        _SentinelHealth table is NOT used because it requires opt-in workspace
+        configuration, only reflects health events (not all rules), and
+        silently returns empty results if the feature is not enabled.
 
-        table = tables[0]
-        columns = [col["name"] for col in table["columns"]]
-        return [dict(zip(columns, row)) for row in table["rows"]]
-
-    def get_analytics_rules(self) -> list[dict]:
-        """
-        Returns all enabled analytics (detection) rules.
         Maps to DCFs covering detection rule configuration evidence.
         """
-        query = """
-        _SentinelHealth
-        | where SentinelResourceKind == "ScheduledAnalyticsRule"
-        | where Status == "Success"
-        | summarize arg_max(TimeGenerated, *) by SentinelResourceName
-        | project RuleName=SentinelResourceName, LastRun=TimeGenerated, Status
-        """
-        return self._kql_query(query)
+        return list(
+            self._paginate(self._arm_rules_url, headers=self.auth.arm_headers())
+        )
 
-    def get_threat_detections_summary(self, timespan: str = "P30D") -> list[dict]:
+    # -------------------------------------------------------------------------
+    # Log Analytics KQL — threat detection summary
+    # -------------------------------------------------------------------------
+
+    def get_threat_detections_summary(self, timespan: str = "P30D") -> list:
         """
-        Returns aggregated threat detections by category.
+        Aggregated threat detections by category from Log Analytics.
+        timespan uses ISO 8601 duration format (P30D = last 30 days).
         Maps to DCFs requiring evidence of continuous threat monitoring.
         """
         query = """
@@ -114,3 +127,19 @@ class SentinelConnector(BaseConnector):
         | order by Count desc
         """
         return self._kql_query(query, timespan=timespan)
+
+    def _kql_query(self, query: str, timespan: str = "P7D") -> list:
+        """KQL query against the Log Analytics workspace (Log Analytics token scope)."""
+        resp = self.session.post(
+            self._query_url,
+            headers=self.auth.log_analytics_headers(),
+            json={"query": query, "timespan": timespan},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        tables = resp.json().get("tables", [])
+        if not tables:
+            return []
+        table   = tables[0]
+        columns = [col["name"] for col in table["columns"]]
+        return [dict(zip(columns, row)) for row in table["rows"]]
