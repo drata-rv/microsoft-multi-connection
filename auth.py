@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 auth.py
 Token acquisition and caching for all Microsoft API surfaces.

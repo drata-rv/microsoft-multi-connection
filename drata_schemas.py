@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 drata_schemas.py
 Normalizers that map raw Microsoft API records to the Drata evidence schema.

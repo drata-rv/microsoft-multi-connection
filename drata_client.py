@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 drata_client.py
 Drata Custom Connections publisher.
