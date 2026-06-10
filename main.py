@@ -265,6 +265,11 @@ def main() -> None:
         default="compliance_payload.json",
         help="JSON output file for collected data (default: compliance_payload.json).",
     )
+    parser.add_argument(
+        "--collect-only",
+        action="store_true",
+        help="Accepted for backwards compatibility. No effect.",
+    )
     args     = parser.parse_args()
     products = ALL_PRODUCTS if "all" in args.products else args.products
 
