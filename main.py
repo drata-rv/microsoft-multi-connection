@@ -24,6 +24,12 @@ Sentinel (all four required when sentinel is in --products):
     SENTINEL_RESOURCE_GROUP      Resource group containing the Sentinel workspace
     SENTINEL_WORKSPACE_NAME      ARM resource name of the workspace
 
+Drata publish (required unless --collect-only):
+    DRATA_API_KEY                API key from Drata Settings → API Keys
+    DRATA_CONNECTION_ID          Custom Connection ID
+    DRATA_RESOURCE_ID            Resource ID within the connection
+                                 (GET /custom-connections/{id}?expand[]=customResources)
+
 Drata SA Team
 """
 
@@ -40,6 +46,7 @@ from typing import Callable
 
 from auth import MSAuthClient
 import drata_schemas as schemas
+from drata_publisher import DrataPublisher
 from sentinel import SentinelConnector
 from purview import PurviewConnector
 from defender_endpoint import DefenderEndpointConnector
@@ -261,7 +268,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="/tmp/compliance_payload.json",
+        default="/home/compliance_payload.json",
         help="JSON output file for collected data (default: compliance_payload.json).",
     )
     parser.add_argument(
@@ -303,7 +310,18 @@ def main() -> None:
         logger.info("collect_only — skipping Drata publish")
         return
 
-    logger.warning("publish_not_implemented — Drata ingestion layer pending")
+    drata_vars = ["DRATA_API_KEY", "DRATA_CONNECTION_ID", "DRATA_RESOURCE_ID"]
+    missing = [v for v in drata_vars if not os.environ.get(v)]
+    if missing:
+        logger.error("publish_skipped — missing env vars: %s", missing)
+        return
+
+    records = [r for bucket in results["normalised"].values() for r in bucket]
+    logger.info("publish_start total_records=%d", len(records))
+    try:
+        DrataPublisher().publish(records)
+    except Exception as exc:
+        logger.error("publish_failed error=%s", exc, exc_info=True)
 
 
 if __name__ == "__main__":
