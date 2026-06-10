@@ -268,7 +268,7 @@ def main() -> None:
     parser.add_argument(
         "--collect-only",
         action="store_true",
-        help="Accepted for backwards compatibility. No effect.",
+        help="Collect from Microsoft and write output file. Skip Drata publish.",
     )
     args     = parser.parse_args()
     products = ALL_PRODUCTS if "all" in args.products else args.products
@@ -299,6 +299,12 @@ def main() -> None:
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, default=str)
     logger.info("payload_written path=%s", args.output)
+
+    if args.collect_only:
+        logger.info("collect_only — skipping Drata publish")
+        return
+
+    logger.warning("publish_not_implemented — Drata ingestion layer pending")
 
 
 if __name__ == "__main__":
