@@ -139,7 +139,10 @@ def _collect(product: str, calls: list) -> dict:
     out = {}
     for key, fn in calls:
         try:
-            out[key] = fn()
+            result = fn()
+            count = len(result) if isinstance(result, list) else 1
+            logger.info("call_ok product=%s key=%s records=%d", product, key, count)
+            out[key] = result
         except Exception as exc:
             logger.error("call_failed product=%s key=%s error=%s", product, key, exc)
             out[key] = {"error": str(exc)}
@@ -177,7 +180,6 @@ def _run_defender_endpoint(auth: MSAuthClient) -> dict:
     conn = DefenderEndpointConnector(auth)
     return _collect("defender_endpoint", [
         ("machines",                      conn.get_machines),
-        ("machines_missing_protection",   conn.get_machines_missing_protection),
         ("alerts_high",                   lambda: conn.get_alerts(severity="High")),
         ("exposure_score",                conn.get_exposure_score),
         ("software_vulnerabilities",      conn.get_software_vulnerabilities),
@@ -192,7 +194,6 @@ def _run_defender_identity(auth: MSAuthClient) -> dict:
         ("risky_users",              conn.get_risky_users),
         ("risk_detections",          conn.get_risk_detections),
         ("risky_service_principals", conn.get_risky_service_principals),
-        ("risky_sign_ins",           conn.get_risky_sign_ins),
         ("named_locations",          conn.get_conditional_access_named_locations),
     ])
 
@@ -201,12 +202,10 @@ def _run_intune(auth: MSAuthClient) -> dict:
     logger.info("Collecting Intune data...")
     conn = IntuneConnector(auth)
     return _collect("intune", [
-        ("device_configurations",     conn.get_device_configurations),
-        ("windows_update_rings",      conn.get_windows_update_rings),
-        ("compliance_policies",       conn.get_compliance_policies),
-        ("noncompliant_devices",      conn.get_noncompliant_devices),
-        ("app_protection_policies",   conn.get_app_protection_policies),
-        ("enrollment_configurations", conn.get_enrollment_configurations),
+        ("device_configurations", conn.get_device_configurations),
+        ("windows_update_rings",  conn.get_windows_update_rings),
+        ("compliance_policies",   conn.get_compliance_policies),
+        ("noncompliant_devices",  conn.get_noncompliant_devices),
     ])
 
 
@@ -262,7 +261,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="compliance_payload.json",
+        default="/tmp/compliance_payload.json",
         help="JSON output file for collected data (default: compliance_payload.json).",
     )
     parser.add_argument(

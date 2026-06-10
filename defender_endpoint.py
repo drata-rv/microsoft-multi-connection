@@ -128,7 +128,6 @@ class DefenderEndpointConnector(BaseConnector):
         params = {
             "$filter": "isof('microsoft.graph.windows10EndpointProtectionConfiguration')",
             "$expand": "deviceStatusSummary",
-            "$select": "id,displayName,lastModifiedDateTime",
         }
         # Graph endpoint — uses default graph_headers() via BaseConnector
         return list(self._paginate(url, params=params))

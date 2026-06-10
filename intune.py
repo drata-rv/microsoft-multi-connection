@@ -67,13 +67,7 @@ class IntuneConnector(BaseConnector):
         Requires: DeviceManagementConfiguration.Read.All
         Maps to DCFs covering patch management policy evidence.
         """
-        params = {
-            "$select": (
-                "id,displayName,qualityUpdatesDeferralPeriodInDays,"
-                "featureUpdatesDeferralPeriodInDays,businessReadyUpdatesOnly,"
-                "lastModifiedDateTime"
-            ),
-        }
+        params = {}
         return list(self._paginate(UPDATE_RINGS_URL, params=params))
 
     def get_compliance_policies(self) -> list:
