@@ -5,20 +5,29 @@ drata_schemas.py
 Normalizers that map raw Microsoft API records to the Drata evidence schema.
 
 Every normalizer receives a raw Microsoft API record and returns a dict
-conforming to this schema — no more, no less:
+with the following field structure:
 
-    {
-      "id":            string  -- Microsoft entity ID (stable across syncs)
-      "service":       string  -- sentinel | purview | mde | entra_id | intune
-      "evidenceType":  string  -- analytics_rule | incident | risky_user | ...
-      "name":          string  -- human-readable label shown in the Drata UI
-      "status":        string  -- see STATUS VOCABULARY below
-      "severity":      string  -- High | Medium | Low | Critical | Informational
-      "owner":         string  -- assignee, userPrincipalName, publisherName, etc.
-      "affectedCount": number  -- exposedMachines, failedDeviceCount, detection count
-      "score":         number  -- cvssV3, qualityDeferralDays, sensitivity order
-      "timestamp":     string  -- ISO 8601, most recent meaningful date for the record
-    }
+CORE FIELDS (guaranteed on every record):
+    "id"            string  -- Microsoft entity ID (stable across syncs)
+    "service"       string  -- sentinel | purview | mde | entra_id | intune
+    "evidenceType"  string  -- analytics_rule | incident | risky_user | ...
+    "name"          string  -- human-readable label shown in the Drata UI
+    "status"        string  -- see STATUS VOCABULARY below
+    "timestamp"     string  -- ISO 8601, most recent meaningful date for the record
+
+SHARED OPTIONAL FIELDS (present when applicable to the resource type):
+    "severity"      string  -- High | Medium | Low | Critical | Informational
+    "owner"         string  -- assignee, userPrincipalName, publisherName, etc.
+    "affectedCount" number  -- exposedMachines, failedDeviceCount, detection count
+    "score"         number  -- cvssV3, qualityDeferralDays, sensitivity order
+
+RESOURCE-SPECIFIC FIELDS (natural API names, see individual normalizers):
+    machine              osPlatform, onboardingStatus
+    vulnerability        publicExploit, exploitInKit
+    exploit_guard        successDeviceCount, errorDeviceCount
+    device_configuration successDeviceCount, errorDeviceCount
+    update_ring          featureUpdatesDeferralPeriodInDays
+    noncompliant_device  operatingSystem, osVersion
 
 STATUS VOCABULARY
     ACTIVE        -- open incident or alert
@@ -188,6 +197,8 @@ def normalize_mde_machine(r: dict) -> dict:
         name=r.get("computerDnsName"),
         status="COMPLIANT" if healthy else "NONCOMPLIANT",
         severity=r.get("riskScore"),
+        osPlatform=r.get("osPlatform"),
+        onboardingStatus=r.get("onboardingStatus"),
         timestamp=r.get("lastSeen"),
     )
 
@@ -224,6 +235,8 @@ def normalize_vulnerability(r: dict) -> dict:
         severity=r.get("severity"),
         affectedCount=r.get("exposedMachines"),
         score=r.get("cvssV3"),
+        publicExploit=r.get("publicExploit"),
+        exploitInKit=r.get("exploitInKit"),
         timestamp=r.get("publishedOn"),
     )
 
@@ -243,6 +256,8 @@ def normalize_exploit_guard(r: dict) -> dict:
         name=r.get("displayName"),
         status="CONFIGURED",
         affectedCount=summary.get("failedDeviceCount"),
+        successDeviceCount=summary.get("successDeviceCount"),
+        errorDeviceCount=summary.get("errorDeviceCount"),
         timestamp=r.get("lastModifiedDateTime"),
     )
 
@@ -335,6 +350,8 @@ def normalize_device_configuration(r: dict) -> dict:
         name=r.get("displayName"),
         status="CONFIGURED",
         affectedCount=summary.get("failedDeviceCount"),
+        successDeviceCount=summary.get("successDeviceCount"),
+        errorDeviceCount=summary.get("errorDeviceCount"),
         timestamp=r.get("lastModifiedDateTime"),
     )
 
@@ -353,6 +370,7 @@ def normalize_update_ring(r: dict) -> dict:
         name=r.get("displayName"),
         status="CONFIGURED",
         score=r.get("qualityUpdatesDeferralPeriodInDays"),
+        featureUpdatesDeferralPeriodInDays=r.get("featureUpdatesDeferralPeriodInDays"),
         timestamp=r.get("lastModifiedDateTime"),
     )
 
@@ -389,5 +407,7 @@ def normalize_noncompliant_device(r: dict) -> dict:
         name=r.get("deviceName"),
         status="NONCOMPLIANT",
         owner=r.get("userDisplayName"),
+        operatingSystem=r.get("operatingSystem"),
+        osVersion=r.get("osVersion"),
         timestamp=r.get("lastSyncDateTime"),
     )
