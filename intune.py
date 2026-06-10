@@ -53,7 +53,6 @@ class IntuneConnector(BaseConnector):
         defined and deployed.
         """
         params = {
-            "$select": "id,displayName,description,lastModifiedDateTime",
             "$expand": "deviceStatusSummary",
         }
         return list(self._paginate(DEVICE_CONFIGS_URL, params=params))
