@@ -81,7 +81,7 @@ DRATA_API_KEY
 DRATA_CONNECTION_ID
 ```
 
-**Drata resource IDs**  set only the ones you want in Drata. Anything unset is skipped silently.
+**Resource IDs** -- numeric IDs used in the Drata API URL path (`/resources/{id}/sessions`). Unset vars are skipped.
 ```
 DRATA_RESOURCE_SENTINEL_INCIDENTS
 DRATA_RESOURCE_SENTINEL_ALERTS
@@ -119,6 +119,46 @@ python main.py --products all --collect-only
 ```
 
 Output is always written to `compliance_payload.json`. Push to Drata happens after unless `--collect-only` is set.
+
+---
+
+## Data schema
+
+Each record pushed to Drata is a JSON object. Batches are wrapped in a `data` array:
+
+```json
+{
+  "data": [
+    {
+      "id": "string",
+      "service": "string",
+      "evidenceType": "string",
+      "name": "string",
+      "status": "string",
+      "timestamp": "string",
+      "severity": "string",
+      "owner": "string",
+      "affectedCount": 0,
+      "score": 0
+    }
+  ]
+}
+```
+
+`id`, `service`, `evidenceType`, `name`, `status`, and `timestamp` are present on every record. All other fields are omitted when not applicable -- no null values are sent.
+
+Some resource types include additional fields with their natural API names:
+
+| Resource | Extra fields |
+|---|---|
+| `machine` | `osPlatform`, `onboardingStatus` |
+| `vulnerability` | `publicExploit`, `exploitInKit` |
+| `exploit_guard` | `successDeviceCount`, `errorDeviceCount` |
+| `device_configuration` | `successDeviceCount`, `errorDeviceCount` |
+| `update_ring` | `featureUpdatesDeferralPeriodInDays` |
+| `noncompliant_device` | `operatingSystem`, `osVersion` |
+
+`status` values: `ACTIVE`, `ENABLED`, `DISABLED`, `CONFIGURED`, `COMPLIANT`, `NONCOMPLIANT`, `AT_RISK`, `REMEDIATED`, `RESOLVED`, `NO_RESPONSE`, `INVALID`.
 
 ---
 
