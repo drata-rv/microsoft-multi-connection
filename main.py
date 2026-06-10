@@ -135,6 +135,17 @@ def _load_ms_config(products: list[str]) -> dict:
 # Product runners
 # ---------------------------------------------------------------------------
 
+def _collect(product: str, calls: list) -> dict:
+    out = {}
+    for key, fn in calls:
+        try:
+            out[key] = fn()
+        except Exception as exc:
+            logger.error("call_failed product=%s key=%s error=%s", product, key, exc)
+            out[key] = {"error": str(exc)}
+    return out
+
+
 def _run_sentinel(auth: MSAuthClient, config: dict) -> dict:
     logger.info("Collecting Sentinel data...")
     conn = SentinelConnector(
@@ -144,59 +155,59 @@ def _run_sentinel(auth: MSAuthClient, config: dict) -> dict:
         resource_group=config["SENTINEL_RESOURCE_GROUP"],
         workspace_name=config["SENTINEL_WORKSPACE_NAME"],
     )
-    return {
-        "incidents":                 conn.get_incidents(),
-        "alerts":                    conn.get_alerts(),
-        "analytics_rules":           conn.get_analytics_rules(),
-        "threat_detections_summary": conn.get_threat_detections_summary(),
-    }
+    return _collect("sentinel", [
+        ("incidents",                 conn.get_incidents),
+        ("alerts",                    conn.get_alerts),
+        ("analytics_rules",           conn.get_analytics_rules),
+        ("threat_detections_summary", conn.get_threat_detections_summary),
+    ])
 
 
 def _run_purview(auth: MSAuthClient) -> dict:
     logger.info("Collecting Purview data...")
     conn = PurviewConnector(auth)
-    return {
-        "sensitivity_labels":   conn.get_sensitivity_labels(),
-        "sensitive_info_types": conn.get_sensitive_info_types(),
-    }
+    return _collect("purview", [
+        ("sensitivity_labels",   conn.get_sensitivity_labels),
+        ("sensitive_info_types", conn.get_sensitive_info_types),
+    ])
 
 
 def _run_defender_endpoint(auth: MSAuthClient) -> dict:
     logger.info("Collecting Defender for Endpoint data...")
     conn = DefenderEndpointConnector(auth)
-    return {
-        "machines":                      conn.get_machines(),
-        "machines_missing_protection":   conn.get_machines_missing_protection(),
-        "alerts_high":                   conn.get_alerts(severity="High"),
-        "exposure_score":                conn.get_exposure_score(),
-        "software_vulnerabilities":      conn.get_software_vulnerabilities(),
-        "exploit_guard_policy_coverage": conn.get_exploit_guard_policy_coverage(),
-    }
+    return _collect("defender_endpoint", [
+        ("machines",                      conn.get_machines),
+        ("machines_missing_protection",   conn.get_machines_missing_protection),
+        ("alerts_high",                   lambda: conn.get_alerts(severity="High")),
+        ("exposure_score",                conn.get_exposure_score),
+        ("software_vulnerabilities",      conn.get_software_vulnerabilities),
+        ("exploit_guard_policy_coverage", conn.get_exploit_guard_policy_coverage),
+    ])
 
 
 def _run_defender_identity(auth: MSAuthClient) -> dict:
     logger.info("Collecting Entra ID Protection data...")
     conn = DefenderIdentityConnector(auth)
-    return {
-        "risky_users":              conn.get_risky_users(),
-        "risk_detections":          conn.get_risk_detections(),
-        "risky_service_principals": conn.get_risky_service_principals(),
-        "risky_sign_ins":           conn.get_risky_sign_ins(),
-        "named_locations":          conn.get_conditional_access_named_locations(),
-    }
+    return _collect("defender_identity", [
+        ("risky_users",              conn.get_risky_users),
+        ("risk_detections",          conn.get_risk_detections),
+        ("risky_service_principals", conn.get_risky_service_principals),
+        ("risky_sign_ins",           conn.get_risky_sign_ins),
+        ("named_locations",          conn.get_conditional_access_named_locations),
+    ])
 
 
 def _run_intune(auth: MSAuthClient) -> dict:
     logger.info("Collecting Intune data...")
     conn = IntuneConnector(auth)
-    return {
-        "device_configurations":     conn.get_device_configurations(),
-        "windows_update_rings":      conn.get_windows_update_rings(),
-        "compliance_policies":       conn.get_compliance_policies(),
-        "noncompliant_devices":      conn.get_noncompliant_devices(),
-        "app_protection_policies":   conn.get_app_protection_policies(),
-        "enrollment_configurations": conn.get_enrollment_configurations(),
-    }
+    return _collect("intune", [
+        ("device_configurations",     conn.get_device_configurations),
+        ("windows_update_rings",      conn.get_windows_update_rings),
+        ("compliance_policies",       conn.get_compliance_policies),
+        ("noncompliant_devices",      conn.get_noncompliant_devices),
+        ("app_protection_policies",   conn.get_app_protection_policies),
+        ("enrollment_configurations", conn.get_enrollment_configurations),
+    ])
 
 
 _RUNNERS = {
@@ -216,6 +227,7 @@ def _normalize(results: dict) -> dict:
     """
     Apply drata_schemas normalizers to collected raw data.
     Returns a dict keyed by resource label containing normalised record lists.
+    Skips any key where collection failed (product-level or call-level error).
     """
     normalised: dict[str, list] = {}
     for resource in _RESOURCE_REGISTRY:
@@ -223,6 +235,8 @@ def _normalize(results: dict) -> dict:
         if "error" in product_data:
             continue
         raw = product_data.get(resource.data_key, [])
+        if isinstance(raw, dict) and "error" in raw:
+            continue
         if isinstance(raw, dict):
             raw = [raw]
         normalised[resource.label] = [resource.transform(r) for r in raw]
