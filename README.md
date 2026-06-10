@@ -1,6 +1,6 @@
 # microsoft-multi-connection
 
-Pulls compliance evidence from five Microsoft products and pushes it to a Drata custom connection. Runs on a schedule, collects everything, syncs to Drata.
+Collects compliance evidence from five Microsoft products and writes normalised records to `compliance_payload.json`.
 
 ---
 
@@ -11,7 +11,7 @@ Pulls compliance evidence from five Microsoft products and pushes it to a Drata 
 | `sentinel` | Incidents, alerts, analytics rules, threat detections |
 | `purview` | Sensitivity labels, sensitive info types |
 | `defender_endpoint` | Machines, high alerts, vulns, exploit guard policy coverage |
-| `defender_identity` | Risky users, risk detections, risky service principals, named locations (this is Entra ID Protection, not Defender for Identity -- different product, different API) |
+| `defender_identity` | Risky users, risk detections, risky service principals, named locations (Entra ID Protection -- not Defender for Identity) |
 | `intune` | Device configs, update rings, compliance policies, noncompliant devices |
 
 ---
@@ -20,7 +20,7 @@ Pulls compliance evidence from five Microsoft products and pushes it to a Drata 
 
 ### 1. App Registration
 
-Single Azure AD app registration, client credentials, application permissions (not delegated). See the permissions table below.
+Single Azure AD app registration, client credentials, application permissions (not delegated).
 
 | Permission | Why |
 |---|---|
@@ -75,34 +75,6 @@ SENTINEL_RESOURCE_GROUP
 SENTINEL_WORKSPACE_NAME
 ```
 
-**Required to push to Drata:**
-```
-DRATA_API_KEY
-DRATA_CONNECTION_ID
-```
-
-**Resource IDs** -- numeric IDs used in the Drata API URL path (`/resources/{id}/sessions`). Unset vars are skipped.
-```
-DRATA_RESOURCE_SENTINEL_INCIDENTS
-DRATA_RESOURCE_SENTINEL_ALERTS
-DRATA_RESOURCE_SENTINEL_RULES
-DRATA_RESOURCE_SENTINEL_THREATS
-DRATA_RESOURCE_PURVIEW_LABELS
-DRATA_RESOURCE_PURVIEW_INFO_TYPES
-DRATA_RESOURCE_MDE_MACHINES
-DRATA_RESOURCE_MDE_ALERTS
-DRATA_RESOURCE_MDE_VULNS
-DRATA_RESOURCE_MDE_EXPLOIT_GUARD
-DRATA_RESOURCE_EID_RISKY_USERS
-DRATA_RESOURCE_EID_RISK_DETECTIONS
-DRATA_RESOURCE_EID_RISKY_PRINCIPALS
-DRATA_RESOURCE_EID_NAMED_LOCATIONS
-DRATA_RESOURCE_INTUNE_CONFIGS
-DRATA_RESOURCE_INTUNE_UPDATE_RINGS
-DRATA_RESOURCE_INTUNE_COMPLIANCE
-DRATA_RESOURCE_INTUNE_NONCOMPLIANT
-```
-
 ---
 
 ## Usage
@@ -114,40 +86,43 @@ python main.py --products all
 # specific products only
 python main.py --products sentinel intune
 
-# collect without pushing to Drata (useful for validating API responses first)
-python main.py --products all --collect-only
+# custom output file
+python main.py --products all --output my_output.json
 ```
 
-Output is always written to `compliance_payload.json`. Push to Drata happens after unless `--collect-only` is set.
+Output is written to `compliance_payload.json` (or `--output` path). Contains raw API responses and normalised records.
 
 ---
 
 ## Data schema
 
-Each record pushed to Drata is a JSON object. Batches are wrapped in a `data` array:
+The `normalised` key in the output contains records shaped for Drata ingestion. Each record is a JSON object.
+
+Core fields present on every record:
 
 ```json
 {
-  "data": [
-    {
-      "id": "string",
-      "service": "string",
-      "evidenceType": "string",
-      "name": "string",
-      "status": "string",
-      "timestamp": "string",
-      "severity": "string",
-      "owner": "string",
-      "affectedCount": 0,
-      "score": 0
-    }
-  ]
+  "id": "string",
+  "service": "string",
+  "evidenceType": "string",
+  "name": "string",
+  "status": "string",
+  "timestamp": "string"
 }
 ```
 
-`id`, `service`, `evidenceType`, `name`, `status`, and `timestamp` are present on every record. All other fields are omitted when not applicable -- no null values are sent.
+Shared optional fields (omitted when not applicable -- no nulls):
 
-Some resource types include additional fields with their natural API names:
+```json
+{
+  "severity": "string",
+  "owner": "string",
+  "affectedCount": 0,
+  "score": 0
+}
+```
+
+Resource-specific fields:
 
 | Resource | Extra fields |
 |---|---|
@@ -162,17 +137,10 @@ Some resource types include additional fields with their natural API names:
 
 ---
 
-## How Drata sync works
+## Notes
 
-Session-based full replacement. Every run opens a session per resource, pushes all current records in batches of 100, then completes the session. Completing the session replaces everything Drata had before with what was just pushed. No state tracking needed locally.
-
-If Microsoft returns zero records for a resource, a `NO_RESPONSE` sentinel record is injected so Drata tests can surface the gap as a failure rather than silently passing. Exception: `noncompliant_devices` where zero records means zero noncompliant devices, which is correct, so nothing is injected.
-
----
-
-## Note
-
-- A module is named `defender_identity.py` for historical reasons but it talks to Entra ID Protection endpoints, not Defender for Identity.
+- `defender_identity.py` talks to Entra ID Protection endpoints, not Defender for Identity.
+- DLP is out of scope. Purview DLP requires the Office 365 Management Activity API -- separate auth, separate workstream.
 
 ---
 
