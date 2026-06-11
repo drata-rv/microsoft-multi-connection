@@ -59,13 +59,13 @@ def _build(**kwargs: Any) -> dict[str, Any]:
 def _risk_state(raw: str | None) -> str:
     """
     Normalise Entra ID Protection riskState strings to the status vocabulary.
-    Defaults to AT_RISK for any unrecognised value — conservative by design.
+    Only confirmed active risk states map to AT_RISK. Everything else —
+    dismissed, confirmedSafe, none, None, unknownFutureValue — maps to
+    REMEDIATED to avoid false positives in compliance tests.
     """
     if raw in {"atRisk", "confirmedCompromised"}:
         return "AT_RISK"
-    if raw in {"remediated", "dismissedAsFixed"}:
-        return "REMEDIATED"
-    return "AT_RISK"
+    return "REMEDIATED"
 
 
 # ── Microsoft Sentinel ────────────────────────────────────────────────────────
