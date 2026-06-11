@@ -53,7 +53,7 @@ class PurviewConnector(BaseConnector):
         Requires: InformationProtectionPolicy.Read.All
         Maps to DCFs covering data classification schema evidence.
         """
-        return list(self._paginate(SENSITIVITY_LABELS_URL))
+        return list(self._paginate(SENSITIVITY_LABELS_URL, headers=self.auth.graph_headers()))
 
     def get_sensitive_info_types(self) -> list:
         """
@@ -63,4 +63,4 @@ class PurviewConnector(BaseConnector):
         license tier supports the dataClassification APIs.
         Maps to DCFs requiring evidence of data classification definitions.
         """
-        return list(self._paginate(SENSITIVE_INFO_TYPES_URL))
+        return list(self._paginate(SENSITIVE_INFO_TYPES_URL, headers=self.auth.graph_headers()))

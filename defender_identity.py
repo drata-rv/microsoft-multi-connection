@@ -61,7 +61,7 @@ class DefenderIdentityConnector(BaseConnector):
         Maps to DCFs covering risky user identification and response evidence.
         """
         params = {"$top": top}
-        raw = list(self._paginate(RISKY_USERS_URL, params=params))
+        raw = list(self._paginate(RISKY_USERS_URL, params=params, headers=self.auth.graph_headers()))
         return [u for u in raw if u.get("riskState") in {"atRisk", "confirmedCompromised"}]
 
     def get_risk_detections(self, top: int = 200) -> list:
@@ -74,7 +74,7 @@ class DefenderIdentityConnector(BaseConnector):
             "$top":     top,
             "$orderby": "detectedDateTime desc",
         }
-        return list(self._paginate(RISK_DETECTIONS_URL, params=params))
+        return list(self._paginate(RISK_DETECTIONS_URL, params=params, headers=self.auth.graph_headers()))
 
     def get_risky_service_principals(self, top: int = 200) -> list:
         """
@@ -85,23 +85,8 @@ class DefenderIdentityConnector(BaseConnector):
         Maps to DCFs covering non-human identity risk monitoring.
         """
         params = {"$top": top}
-        raw = list(self._paginate(RISKY_SERVICE_PRINCIPALS_URL, params=params))
+        raw = list(self._paginate(RISKY_SERVICE_PRINCIPALS_URL, params=params, headers=self.auth.graph_headers()))
         return [sp for sp in raw if sp.get("riskState") in {"atRisk", "confirmedCompromised"}]
-
-    def get_risky_sign_ins(self, top: int = 200) -> list:
-        """
-        Returns risk detections scoped to sign-in risk events.
-        Uses riskDetections filtered by riskType rather than the signIns audit log,
-        avoiding the need for AuditLog.Read.All.
-        Requires: IdentityRiskEvent.Read.All
-        Maps to DCFs requiring evidence of suspicious authentication monitoring.
-        """
-        params = {
-            "$top":     top,
-            "$filter":  "riskType eq 'signin'",
-            "$orderby": "detectedDateTime desc",
-        }
-        return list(self._paginate(RISK_DETECTIONS_URL, params=params))
 
     def get_conditional_access_named_locations(self) -> list:
         """
@@ -110,4 +95,4 @@ class DefenderIdentityConnector(BaseConnector):
         Requires: Policy.Read.All
         Maps to DCFs covering network access control and CA policy evidence.
         """
-        return list(self._paginate(NAMED_LOCATIONS_URL))
+        return list(self._paginate(NAMED_LOCATIONS_URL, headers=self.auth.graph_headers()))

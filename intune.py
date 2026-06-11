@@ -4,16 +4,14 @@ Microsoft Intune enhancement connector.
 
 The native Drata M365 integration covers basic device compliance and identity sync.
 This connector targets the advanced device management DCFs the native integration
-does not reach: configuration profiles, Update Rings, app protection policies,
-enrollment configurations, and noncompliant device tracking.
+does not reach: configuration profiles, Update Rings, and noncompliant device tracking.
 
 Required permissions:
     DeviceManagementManagedDevices.Read.All   -- device inventory, compliance state
-    DeviceManagementConfiguration.Read.All    -- configuration profiles, Update Rings,
-                                                 enrollment configs, app protection policies
+    DeviceManagementConfiguration.Read.All    -- configuration profiles, Update Rings
 
-DCF targets: device config profiles, Update Rings, app protection policies,
-             mobile device configs, noncompliant device tracking
+DCF targets: device config profiles, Update Rings, compliance policies,
+             noncompliant device tracking
 
 Drata SA Team
 """
@@ -30,9 +28,7 @@ COMPLIANCE_POLICIES_URL = f"{GRAPH_BASE}/deviceManagement/deviceCompliancePolici
 # returns the base type and silently omits Update Ring-specific fields such as
 # qualityUpdatesDeferralPeriodInDays and featureUpdatesDeferralPeriodInDays.
 UPDATE_RINGS_URL        = f"{GRAPH_BASE}/deviceManagement/windowsUpdateForBusinessConfigurations"
-APP_PROTECTION_URL      = f"{GRAPH_BASE}/deviceAppManagement/managedAppPolicies"
 MANAGED_DEVICES_URL     = f"{GRAPH_BASE}/deviceManagement/managedDevices"
-ENROLLMENT_CONFIGS_URL  = f"{GRAPH_BASE}/deviceManagement/deviceEnrollmentConfigurations"
 
 
 class IntuneConnector(BaseConnector):
@@ -55,7 +51,7 @@ class IntuneConnector(BaseConnector):
         params = {
             "$expand": "deviceStatusSummary",
         }
-        return list(self._paginate(DEVICE_CONFIGS_URL, params=params))
+        return list(self._paginate(DEVICE_CONFIGS_URL, params=params, headers=self.auth.graph_headers()))
 
     def get_windows_update_rings(self) -> list:
         """
@@ -67,8 +63,7 @@ class IntuneConnector(BaseConnector):
         Requires: DeviceManagementConfiguration.Read.All
         Maps to DCFs covering patch management policy evidence.
         """
-        params = {}
-        return list(self._paginate(UPDATE_RINGS_URL, params=params))
+        return list(self._paginate(UPDATE_RINGS_URL, headers=self.auth.graph_headers()))
 
     def get_compliance_policies(self) -> list:
         """
@@ -76,7 +71,7 @@ class IntuneConnector(BaseConnector):
         Requires: DeviceManagementConfiguration.Read.All
         Maps to DCFs requiring evidence that compliance policy baselines exist.
         """
-        return list(self._paginate(COMPLIANCE_POLICIES_URL))
+        return list(self._paginate(COMPLIANCE_POLICIES_URL, headers=self.auth.graph_headers()))
 
     def get_noncompliant_devices(self) -> list:
         """
@@ -92,20 +87,4 @@ class IntuneConnector(BaseConnector):
             ),
             "$orderby": "lastSyncDateTime desc",
         }
-        return list(self._paginate(MANAGED_DEVICES_URL, params=params))
-
-    def get_app_protection_policies(self) -> list:
-        """
-        Returns MAM app protection policies (iOS and Android).
-        Requires: DeviceManagementConfiguration.Read.All
-        Maps to DCFs covering mobile device data protection evidence.
-        """
-        return list(self._paginate(APP_PROTECTION_URL))
-
-    def get_enrollment_configurations(self) -> list:
-        """
-        Returns device enrollment profiles and restrictions.
-        Requires: DeviceManagementConfiguration.Read.All
-        Maps to DCFs covering device onboarding control evidence.
-        """
-        return list(self._paginate(ENROLLMENT_CONFIGS_URL))
+        return list(self._paginate(MANAGED_DEVICES_URL, params=params, headers=self.auth.graph_headers()))

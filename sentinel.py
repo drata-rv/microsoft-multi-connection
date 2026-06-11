@@ -77,7 +77,7 @@ class SentinelConnector(BaseConnector):
         Maps to DCFs covering incident response process evidence.
         """
         params = {"$top": top}
-        raw = list(self._paginate(INCIDENTS_URL, params=params))
+        raw = list(self._paginate(INCIDENTS_URL, params=params, headers=self.auth.graph_headers()))
         return [i for i in raw if i.get("status") != "resolved"]
 
     def get_alerts(self, top: int = 100) -> list:
@@ -88,7 +88,7 @@ class SentinelConnector(BaseConnector):
         Maps to DCFs covering threat detection monitoring.
         """
         params = {"$top": top}
-        raw = list(self._paginate(ALERTS_V2_URL, params=params))
+        raw = list(self._paginate(ALERTS_V2_URL, params=params, headers=self.auth.graph_headers()))
         return [a for a in raw if a.get("status") != "resolved"]
 
     # -------------------------------------------------------------------------
@@ -130,14 +130,12 @@ class SentinelConnector(BaseConnector):
 
     def _kql_query(self, query: str, timespan: str = "P7D") -> list:
         """KQL query against the Log Analytics workspace (Log Analytics token scope)."""
-        resp = self.session.post(
+        data = self._post(
             self._query_url,
             headers=self.auth.log_analytics_headers(),
             json={"query": query, "timespan": timespan},
-            timeout=60,
         )
-        resp.raise_for_status()
-        tables = resp.json().get("tables", [])
+        tables = data.get("tables", [])
         if not tables:
             return []
         table   = tables[0]

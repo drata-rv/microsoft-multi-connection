@@ -157,9 +157,10 @@ def _collect(product: str, calls: list) -> dict:
                     "call_failed product=%s key=%s reason=missing_permissions_or_admin_consent status=403",
                     product, key,
                 )
+                out[key] = {"error": "missing_permissions_or_admin_consent"}
             else:
                 logger.error("call_failed product=%s key=%s error=%s", product, key, exc)
-            out[key] = {"error": str(exc)}
+                out[key] = {"error": str(exc)}
     return out
 
 

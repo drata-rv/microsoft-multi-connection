@@ -64,16 +64,6 @@ class DefenderEndpointConnector(BaseConnector):
             self._paginate(MDE_MACHINES_URL, params=params or None, headers=self.auth.mde_headers())
         )
 
-    def get_machines_missing_protection(self) -> list:
-        """
-        Returns devices where health status is not Active or onboarding is incomplete.
-        Requires: Machine.Read.All
-        Maps to DCFs requiring evidence that endpoint protection is enforced across the fleet.
-        """
-        return self.get_machines(
-            filter_expr="(healthStatus ne 'Active') or (onboardingStatus ne 'Onboarded')"
-        )
-
     def get_alerts(self, severity: Optional[str] = None, top: int = 100) -> list:
         """
         Returns MDE threat alerts, optionally filtered by severity.
@@ -129,5 +119,4 @@ class DefenderEndpointConnector(BaseConnector):
             "$filter": "isof('microsoft.graph.windows10EndpointProtectionConfiguration')",
             "$expand": "deviceStatusSummary",
         }
-        # Graph endpoint — uses default graph_headers() via BaseConnector
-        return list(self._paginate(url, params=params))
+        return list(self._paginate(url, params=params, headers=self.auth.graph_headers()))
