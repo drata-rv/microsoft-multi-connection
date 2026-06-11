@@ -151,7 +151,14 @@ def _collect(product: str, calls: list) -> dict:
             logger.info("call_ok product=%s key=%s records=%d", product, key, count)
             out[key] = result
         except Exception as exc:
-            logger.error("call_failed product=%s key=%s error=%s", product, key, exc)
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 403:
+                logger.error(
+                    "call_failed product=%s key=%s reason=missing_permissions_or_admin_consent status=403",
+                    product, key,
+                )
+            else:
+                logger.error("call_failed product=%s key=%s error=%s", product, key, exc)
             out[key] = {"error": str(exc)}
     return out
 
